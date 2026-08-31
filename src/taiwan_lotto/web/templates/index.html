@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="瀏覽本機保存的台灣彩券開獎資料">
+    <title>台灣彩券資料實驗室</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}?v={{ static_version }}">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要內容</a>
+    <header class="site-header">
+      <div class="shell header-content">
+        <div>
+          <p class="eyebrow">TAIWAN LOTTO LAB</p>
+          <h1>台灣彩券資料實驗室</h1>
+          <p class="subtitle">查看本機保存的開獎紀錄與統計資料。</p>
+          <nav class="site-nav" aria-label="主要導覽">
+            <a href="{{ draws_url }}"{% if active_page == 'draws' %} aria-current="page"{% endif %}>開獎紀錄</a>
+            <a href="{{ stats_url }}"{% if active_page == 'stats' %} aria-current="page"{% endif %}>統計資料</a>
+          </nav>
+        </div>
+        <div class="database-status" aria-label="本機資料狀態">
+          <span class="status-dot" aria-hidden="true"></span>
+          {% if result and result.latest_draw_date %}
+            更新至 {{ result.latest_draw_date.strftime('%Y-%m-%d') }}
+          {% elif state == 'missing' %}
+            尚未建立資料庫
+          {% elif state == 'error' %}
+            資料庫無法讀取
+          {% else %}
+            本機資料
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <main class="shell main-content" id="main-content">
+      <section class="filter-card" aria-labelledby="filter-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">DRAW BROWSER</p>
+            <h2 id="filter-title">查詢開獎紀錄</h2>
+          </div>
+          <p>日期可留空，預設顯示最新資料。</p>
+        </div>
+        <form method="get" action="/" class="filter-form" data-date-form>
+          <div class="field">
+            <label for="game">彩券種類</label>
+            <select id="game" name="game">
+              {% for game in games %}
+                <option value="{{ game.code }}" data-history-start="{{ game.history_start.isoformat() }}"{% if game.code == selected_game %} data-latest-date="{{ result.latest_draw_date.isoformat() if result and result.latest_draw_date else '' }}" selected{% endif %}>{{ game.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="start">開始日期</label>
+            <input id="start" name="start" type="date" value="{{ start_value }}" min="{{ selected_history_start }}"{% if result and result.latest_draw_date %} max="{{ result.latest_draw_date.isoformat() }}"{% endif %}>
+          </div>
+          <div class="field">
+            <label for="end">結束日期</label>
+            <input id="end" name="end" type="date" value="{{ end_value }}" min="{{ selected_history_start }}"{% if result and result.latest_draw_date %} max="{{ result.latest_draw_date.isoformat() }}"{% endif %}>
+          </div>
+          <button type="submit">查詢</button>
+        </form>
+      </section>
+
+      {% if state == 'missing' %}
+        <section class="notice-card" role="status">
+          <span class="notice-icon" aria-hidden="true">＋</span>
+          <div><h2>尚未找到本機開獎資料</h2><p>請先在終端機執行 <code>taiwan-lotto sync</code>，再重新整理此頁。</p></div>
+        </section>
+      {% elif state == 'empty_database' %}
+        <section class="notice-card" role="status">
+          <span class="notice-icon" aria-hidden="true">○</span>
+          <div><h2>{{ result.game.name }}目前沒有開獎紀錄</h2><p>請執行 <code>taiwan-lotto sync</code> 取得最新資料。</p></div>
+        </section>
+      {% elif state == 'no_results' %}
+        <section class="notice-card" role="status">
+          <span class="notice-icon" aria-hidden="true">?</span>
+          <div><h2>查無資料</h2><p>請調整彩券種類或日期範圍後再查詢。</p></div>
+        </section>
+      {% elif state == 'invalid' %}
+        <section class="notice-card notice-warning" role="alert">
+          <span class="notice-icon" aria-hidden="true">!</span>
+          <div><h2>查詢條件有誤</h2><p>{{ message }}</p></div>
+        </section>
+      {% elif state == 'error' %}
+        <section class="notice-card notice-error" role="alert">
+          <span class="notice-icon" aria-hidden="true">!</span>
+          <div><h2>無法讀取本機資料</h2><p>請確認資料庫未被移動或損壞，詳細資訊可查看終端機輸出。</p></div>
+        </section>
+      {% elif state == 'results' %}
+        <section class="results" id="results" aria-labelledby="results-title" tabindex="-1">
+          <div class="results-heading">
+            <div><p class="eyebrow">RESULTS</p><h2 id="results-title">{{ result.game.name }}開獎紀錄</h2></div>
+            <p>共 {{ result.total_items }} 筆 · 第 {{ result.page }} / {{ result.total_pages }} 頁</p>
+          </div>
+          <div class="draw-list">
+            {% for draw in result.items %}
+              <article class="draw-card">
+                <div class="draw-meta">
+                  <div><span class="game-tag">{{ result.game.name }}</span><h3>第 {{ draw.draw_term }} 期</h3></div>
+                  <time datetime="{{ draw.draw_date.isoformat() }}">{{ draw.draw_date.strftime('%Y-%m-%d') }}</time>
+                </div>
+                <div class="numbers" aria-label="本期開獎號碼">
+                  {% for number in draw.main_numbers|sort %}<span class="number-ball">{{ '%02d'|format(number) }}</span>{% endfor %}
+                  <span class="number-divider" aria-hidden="true"></span>
+                  <span class="special-group"><span class="special-label">{% if result.game.code == 'lotto649' %}特別號{% else %}第二區{% endif %}</span><span class="number-ball special-ball">{{ '%02d'|format(draw.special_number) }}</span></span>
+                </div>
+              </article>
+            {% endfor %}
+          </div>
+          <nav class="pagination" aria-label="查詢結果分頁">
+            {% if first_url %}<a href="{{ first_url }}" aria-label="第一頁">« <span>第一頁</span></a>{% else %}<span aria-disabled="true">« <span>第一頁</span></span>{% endif %}
+            {% if previous_url %}<a href="{{ previous_url }}" rel="prev">← 上一頁</a>{% else %}<span aria-disabled="true">← 上一頁</span>{% endif %}
+            <form class="pagination-jump" method="get" action="/#results">
+              <input type="hidden" name="game" value="{{ result.game.code }}">
+              <input type="hidden" name="start" value="{{ result.start_date.isoformat() if result.start_date else '' }}">
+              <input type="hidden" name="end" value="{{ result.end_date.isoformat() if result.end_date else '' }}">
+              <label for="page-jump">第 <input id="page-jump" name="page" type="number" value="{{ result.page }}" min="1" max="{{ result.total_pages }}" step="1" inputmode="numeric" aria-label="輸入頁碼，共 {{ result.total_pages }} 頁" required> / {{ result.total_pages }} 頁</label>
+            </form>
+            {% if next_url %}<a href="{{ next_url }}" rel="next">下一頁 →</a>{% else %}<span aria-disabled="true">下一頁 →</span>{% endif %}
+            {% if last_url %}<a href="{{ last_url }}" aria-label="最後一頁"><span>最後一頁</span> »</a>{% else %}<span aria-disabled="true"><span>最後一頁</span> »</span>{% endif %}
+          </nav>
+        </section>
+      {% endif %}
+    </main>
+    <footer class="shell"><p>開獎結果以台灣彩券官方公告為準。</p></footer>
+    <script src="{{ url_for('static', path='/browser.js') }}?v={{ static_version }}" defer></script>
+  </body>
+</html>

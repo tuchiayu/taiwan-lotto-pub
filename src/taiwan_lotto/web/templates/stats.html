@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="查看台灣彩券各號碼的歷史開出次數統計">
+    <title>統計資料 - 台灣彩券資料實驗室</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}?v={{ static_version }}">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要內容</a>
+    <header class="site-header">
+      <div class="shell header-content">
+        <div>
+          <p class="eyebrow">TAIWAN LOTTO LAB</p>
+          <h1>統計資料</h1>
+          <p class="subtitle">比較指定範圍內的號碼頻率、理論差異與未出現期數。</p>
+          <nav class="site-nav" aria-label="主要導覽">
+            <a href="{{ draws_url }}"{% if active_page == 'draws' %} aria-current="page"{% endif %}>開獎紀錄</a>
+            <a href="{{ stats_url }}"{% if active_page == 'stats' %} aria-current="page"{% endif %}>統計資料</a>
+          </nav>
+        </div>
+        <div class="database-status" aria-label="本機資料狀態">
+          <span class="status-dot" aria-hidden="true"></span>
+          {% if result and result.latest_draw_date %}
+            更新至 {{ result.latest_draw_date.strftime('%Y-%m-%d') }}
+          {% elif state == 'missing' %}
+            尚未建立資料庫
+          {% elif state == 'error' %}
+            資料庫無法讀取
+          {% else %}
+            本機資料
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <main class="shell main-content" id="main-content">
+      <details class="filter-card query-disclosure"{% if state != 'results' %} open{% endif %}>
+        <summary>
+          <div>
+            <p class="eyebrow">NUMBER STATS</p>
+            <h2 id="filter-title">設定條件</h2>
+            {% if state == 'results' %}<p class="applied-filter">{{ result.game.name }} · {{ applied_range_label }} · 共 {{ result.total_draws }} 期</p>{% endif %}
+          </div>
+          <span class="summary-action"><span class="when-closed">修改條件</span><span class="when-open">收合條件</span></span>
+        </summary>
+        <form method="get" action="/stats" class="stats-filter-form" data-range-form aria-labelledby="filter-title">
+          <input type="hidden" name="table" value="{{ active_stats_tab }}" data-active-table-input>
+          <div class="field">
+            <label for="game">彩券種類</label>
+            <select id="game" name="game">
+              {% for game in games %}
+                <option value="{{ game.code }}" data-history-start="{{ game.history_start.isoformat() }}"{% if game.code == selected_game %} data-latest-date="{{ result.latest_draw_date.isoformat() if result and result.latest_draw_date else '' }}" selected{% endif %}>{{ game.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <fieldset class="range-selector">
+            <legend>統計範圍</legend>
+            <div class="range-options">
+              <label><input type="radio" name="range" value="all"{% if range_mode == 'all' %} checked{% endif %}>全部資料</label>
+              <label><input type="radio" name="range" value="date"{% if range_mode == 'date' %} checked{% endif %}>日期區間</label>
+              <label><input type="radio" name="range" value="recent"{% if range_mode == 'recent' %} checked{% endif %}>最近期數</label>
+            </div>
+          </fieldset>
+          <div class="range-inputs" data-range-panel="date">
+            <div class="field">
+              <label for="start">開始日期</label>
+              <input id="start" name="start" type="date" value="{{ start_value }}" min="{{ selected_history_start }}"{% if result and result.latest_draw_date %} max="{{ result.latest_draw_date.isoformat() }}"{% endif %}>
+            </div>
+            <div class="field">
+              <label for="end">結束日期</label>
+              <input id="end" name="end" type="date" value="{{ end_value }}" min="{{ selected_history_start }}"{% if result and result.latest_draw_date %} max="{{ result.latest_draw_date.isoformat() }}"{% endif %}>
+            </div>
+          </div>
+          <div class="range-inputs" data-range-panel="recent">
+            <div class="field">
+              <label for="draws">最近期數</label>
+              <input id="draws" name="draws" type="number" value="{{ draws_value }}" min="1" max="1000000" step="1" inputmode="numeric" data-required>
+            </div>
+          </div>
+          <button type="submit">查詢</button>
+        </form>
+      </details>
+
+      {% if state == 'missing' %}
+        <section class="notice-card" role="status">
+          <span class="notice-icon" aria-hidden="true">＋</span>
+          <div><h2>尚未找到本機開獎資料</h2><p>請先在終端機執行 <code>taiwan-lotto sync</code>，再重新整理此頁。</p></div>
+        </section>
+      {% elif state == 'empty_database' %}
+        <section class="notice-card" role="status">
+          <span class="notice-icon" aria-hidden="true">○</span>
+          <div><h2>{{ result.game.name }}目前沒有開獎紀錄</h2><p>請執行 <code>taiwan-lotto sync</code> 取得最新資料。</p></div>
+        </section>
+      {% elif state == 'no_results' %}
+        <section class="notice-card" role="status">
+          <span class="notice-icon" aria-hidden="true">?</span>
+          <div><h2>查無資料</h2><p>請調整彩券種類或日期範圍後再查詢。</p></div>
+        </section>
+      {% elif state == 'invalid' %}
+        <section class="notice-card notice-warning" role="alert">
+          <span class="notice-icon" aria-hidden="true">!</span>
+          <div><h2>查詢條件有誤</h2><p>{{ message }}</p></div>
+        </section>
+      {% elif state == 'error' %}
+        <section class="notice-card notice-error" role="alert">
+          <span class="notice-icon" aria-hidden="true">!</span>
+          <div><h2>無法讀取本機資料</h2><p>請確認資料庫未被移動或損壞，詳細資訊可查看終端機輸出。</p></div>
+        </section>
+      {% elif state == 'results' %}
+        <section class="frequency-section" id="results" aria-labelledby="frequency-title" tabindex="-1" data-stats-results data-active-table="{{ active_stats_tab }}">
+          <div class="results-heading frequency-heading">
+            <div><p class="eyebrow">RESULTS</p><h2 id="frequency-title">{{ result.game.name }}統計資料</h2></div>
+            <p>{{ applied_range_label }} · 共 {{ result.total_draws }} 期</p>
+          </div>
+          {% if result.range_notice %}<p class="range-notice" role="status">{{ result.range_notice }}</p>{% endif %}
+          <aside class="statistics-guide" aria-labelledby="guide-title">
+            <div><strong id="guide-title">統計說明</strong><p>統計資料僅供參考，不代表未來開獎結果。</p></div>
+            <details><summary>欄位說明</summary><dl><div><dt>與理論差異</dt><dd>實際開出次數減去理論次數。</dd></div><div><dt>連續未開</dt><dd>從最新一期往回計算的連續未開期數。</dd></div><div><dt>最長未開</dt><dd>所選範圍內最長的連續未開期數。</dd></div></dl></details>
+          </aside>
+          <div class="frequency-toolbar" data-sticky-toolbar>
+            <div class="frequency-tabs" role="tablist" aria-label="統計號碼類型">
+              <a href="{{ stats_tab_urls.main }}" id="main-tab" role="tab" tabindex="{{ '0' if active_stats_tab == 'main' else '-1' }}" aria-selected="{{ 'true' if active_stats_tab == 'main' else 'false' }}" aria-controls="main-panel">{% if result.game.code == 'lotto649' %}獎號{% else %}第一區{% endif %}</a>
+              <a href="{{ stats_tab_urls.special }}" id="special-tab" role="tab" tabindex="{{ '0' if active_stats_tab == 'special' else '-1' }}" aria-selected="{{ 'true' if active_stats_tab == 'special' else 'false' }}" aria-controls="special-panel">{% if result.game.code == 'lotto649' %}特別號{% else %}第二區{% endif %}</a>
+            </div>
+            <p class="sort-status" aria-live="polite">排序：<span data-sort-status>{{ main_sort_label if active_stats_tab == 'main' else special_sort_label }}</span></p>
+          </div>
+          {% for table_name in ('main', 'special') %}
+            {% set table_is_main = table_name == 'main' %}
+            {% set table_label = ('獎號' if result.game.code == 'lotto649' else '第一區') if table_is_main else ('特別號' if result.game.code == 'lotto649' else '第二區') %}
+            {% set frequencies = result.main_frequencies if table_is_main else result.special_frequencies %}
+            {% set table_sort = main_sort if table_is_main else special_sort %}
+            {% set table_order = main_order if table_is_main else special_order %}
+            {% set table_sort_urls = main_sort_urls if table_is_main else special_sort_urls %}
+          <div class="frequency-group" id="{{ table_name }}-panel" role="tabpanel" aria-labelledby="{{ table_name }}-tab" data-table-panel="{{ table_name }}" data-sort-field="{{ table_sort }}" data-sort-order="{{ table_order }}" data-sort-label="{{ main_sort_label if table_is_main else special_sort_label }}"{% if active_stats_tab != table_name %} hidden{% endif %}>
+            <div class="group-heading"><div><h3>{{ table_label }}</h3><p class="frequency-summary">理論開出率 {{ '%.2f'|format((result.main_theoretical_rate if table_is_main else result.special_theoretical_rate) * 100) }}%，理論 {{ '%.2f'|format(result.main_expected_count if table_is_main else result.special_expected_count) }} 次。</p></div><span class="scroll-hint">表格可左右滑動</span></div>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="{{ table_label }}統計表，可水平與垂直捲動" data-table-scroll>
+              <table class="frequency-table" aria-label="{{ table_label }}統計">
+                <thead><tr>
+                  {% set columns = [('number', '號碼'), ('count', '開出次數'), ('rate', '開出率'), ('expected_difference', '與理論差異'), ('last_seen_date', '最近開出'), ('current_missing_draws', '連續未開'), ('longest_missing_draws', '最長未開')] %}
+                  {% for key, label in columns %}<th scope="col"{% if table_sort == key %} aria-sort="{{ 'ascending' if table_order == 'asc' else 'descending' }}"{% endif %}><a href="{{ table_sort_urls[key] }}" data-sort-link data-sort-field="{{ key }}"><span>{{ label }}</span><span class="sort-icon" aria-hidden="true">{% if table_sort == key %}{{ '▲' if table_order == 'asc' else '▼' }}{% else %}↕{% endif %}</span></a></th>{% endfor %}
+                </tr></thead>
+                <tbody>{% for item in frequencies %}<tr>
+                  <th scope="row" data-sort-value="{{ item.number }}"><span class="number-ball{% if not table_is_main %} special-ball{% endif %}">{{ '%02d'|format(item.number) }}</span></th>
+                  <td data-sort-value="{{ item.count }}">{{ item.count }} 次</td><td data-sort-value="{{ item.rate }}">{{ '%.2f'|format(item.rate * 100) }}%</td>
+                  <td data-sort-value="{{ item.expected_difference }}" class="{{ 'positive' if item.expected_difference > 0 else 'negative' if item.expected_difference < 0 else '' }}">{{ '%+.2f'|format(item.expected_difference) }}</td>
+                  <td data-sort-value="{{ item.last_seen_date.isoformat() if item.last_seen_date else '' }}">{% if item.last_seen_date %}{{ item.last_seen_date.strftime('%Y-%m-%d') }}{% else %}尚未開出{% endif %}</td>
+                  <td data-sort-value="{{ item.current_missing_draws }}">{{ item.current_missing_draws }} 期</td><td data-sort-value="{{ item.longest_missing_draws }}">{{ item.longest_missing_draws }} 期</td>
+                </tr>{% endfor %}</tbody>
+              </table>
+            </div>
+          </div>
+          {% endfor %}
+        </section>
+      {% endif %}
+    </main>
+    <footer class="shell"><p>開獎結果以台灣彩券官方公告為準。</p></footer>
+    <script src="{{ url_for('static', path='/stats.js') }}?v={{ static_version }}" defer></script>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "taiwan-lotto"
+version = "0.1.0"
+description = "A Python project for collecting, storing, querying, and analyzing Taiwan Lotto 6/49 and Super Lotto draw results"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+
+[project.scripts]
+taiwan-lotto = "taiwan_lotto.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"taiwan_lotto.migrations" = ["*.sql"]
+"taiwan_lotto.web" = ["templates/*.html", "static/*.css", "static/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]

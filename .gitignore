@@ -1,0 +1,57 @@
+# Git Ignore Management
+# To generate language-specific ignore rules, use: https://gitignore.io
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE & Editor settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+
+# Environment variables, Secrets & Local Databases
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# AI Assistants & Code Indexing (Local Databases, Caches & Rules)
+.agents/
+.antigravitycli/
+.claude/
+.cline/
+.codebase-memory/
+.codegraph/
+.codex/
+/AGENTS.md
+/CLAUDE.md
+
+# Python virtual environments
+venv/
+.venv/
+env/
+
+# Python compiled files & tool caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Python packaging outputs
+build/
+dist/
+*.egg-info/

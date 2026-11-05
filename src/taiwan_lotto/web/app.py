@@ -50,7 +50,7 @@ def create_app(
         yield
 
     app = FastAPI(
-        title="Taiwan Lotto Lab",
+        title="Taiwan Lotto",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,

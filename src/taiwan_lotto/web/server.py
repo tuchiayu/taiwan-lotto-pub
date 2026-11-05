@@ -42,7 +42,7 @@ def run_web(
             timer.start()
 
     app = create_app(database_path, on_started=open_after_startup)
-    print(f"Taiwan Lotto Lab is available at {url}")
+    print(f"Taiwan Lotto is available at {url}")
     print("Press Ctrl+C to stop the server.")
     server_runner(app, host=HOST, port=port, log_level="warning")
     return 0

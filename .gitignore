@@ -36,6 +36,14 @@ Thumbs.db
 /AGENTS.md
 /CLAUDE.md
 
+# Workflow scratch files
+.github/TEMP_ISSUE_BODY.md
+.github/TEMP_PR_BODY.md
+.github/TEMP_SHERPA_PARAMS.json
+
+# Local-only feedback notes (see DEVELOPMENT.md 1.4)
+docs/feedback.md
+
 # Python virtual environments
 venv/
 .venv/
@@ -50,6 +58,7 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+test-results/
 
 # Python packaging outputs
 build/

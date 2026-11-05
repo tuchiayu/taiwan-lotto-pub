@@ -150,6 +150,20 @@ class FrequencyPage:
     special_order: str
 
 
+@dataclass(frozen=True, slots=True)
+class _StatsRange:
+    """Carry a resolved range and its storage metadata through the query."""
+
+    mode: str
+    start_date: date | None
+    end_date: date | None
+    requested_draws: int
+    total_draws: int
+    available_draws: int
+    latest_date: date | None
+    notice: str | None
+
+
 class StatsQueryService:
     """Validate browser filters and coordinate read-only frequency queries."""
 
@@ -178,6 +192,24 @@ class StatsQueryService:
         main_sort, main_order = _validate_sort(main_sort, main_order)
         special_sort, special_order = _validate_sort(special_sort, special_order)
 
+        selection = self._resolve_range(
+            game, range_mode=range_mode, start=start, end=end, draws=draws
+        )
+        selected_draws = self._select_draws(game, selection)
+        return _build_frequency_page(
+            game,
+            selection,
+            selected_draws,
+            main_sort=main_sort,
+            main_order=main_order,
+            special_sort=special_sort,
+            special_order=special_order,
+        )
+
+    def _resolve_range(
+        self, game: GameSpec, *, range_mode: str, start: str, end: str, draws: str
+    ) -> _StatsRange:
+        """Validate the active range against storage metadata and count its draws."""
         latest_date = self._storage.latest_available_draw_date(game.code)
         available_draws = self._storage.count_draws(game.code)
         start_date = None
@@ -186,26 +218,7 @@ class StatsQueryService:
         range_notice = None
 
         if range_mode == "date":
-            start_date = _parse_date(start, "開始日期")
-            end_date = _parse_date(end, "結束日期")
-            if start_date and start_date < game.history_start:
-                raise QueryValidationError(
-                    f"開始日期不可早於 {game.history_start:%Y-%m-%d}。"
-                )
-            if end_date and end_date < game.history_start:
-                raise QueryValidationError(
-                    f"結束日期不可早於 {game.history_start:%Y-%m-%d}。"
-                )
-            if latest_date and start_date and start_date > latest_date:
-                raise QueryValidationError(
-                    f"開始日期不可晚於最新資料 {latest_date:%Y-%m-%d}。"
-                )
-            if latest_date and end_date and end_date > latest_date:
-                raise QueryValidationError(
-                    f"結束日期不可晚於最新資料 {latest_date:%Y-%m-%d}。"
-                )
-            if start_date and end_date and start_date > end_date:
-                raise QueryValidationError("開始日期不可晚於結束日期。")
+            start_date, end_date = _parse_stats_dates(game, latest_date, start, end)
             if start_date is None and end_date is None:
                 range_mode = "all"
         elif range_mode == "recent":
@@ -225,55 +238,99 @@ class StatsQueryService:
                 f"因此顯示全部 {available_draws} 期。"
             )
 
-        selected_draws = (
-            self._storage.query_draws(
-                game.code,
-                start_date=start_date,
-                end_date=end_date,
-                limit=total_draws,
-                offset=0,
-            )
-            if total_draws
-            else []
-        )
-        selected_draws.reverse()
-        main_rate = 6 / game.main_number_max
-        special_rate = 1 / game.special_number_max
-        main_frequencies = _number_statistics(
-            selected_draws,
-            max_number=game.main_number_max,
-            expected_count=total_draws * main_rate,
-            special=False,
-        )
-        special_frequencies = _number_statistics(
-            selected_draws,
-            max_number=game.special_number_max,
-            expected_count=total_draws * special_rate,
-            special=True,
-        )
-        return FrequencyPage(
-            game=game,
-            main_frequencies=_sort_frequencies(main_frequencies, main_sort, main_order),
-            special_frequencies=_sort_frequencies(
-                special_frequencies, special_sort, special_order
-            ),
-            total_draws=total_draws,
+        return _StatsRange(
+            mode=range_mode,
             start_date=start_date,
             end_date=end_date,
-            latest_draw_date=latest_date,
-            range_mode=range_mode,
             requested_draws=requested_draws,
+            total_draws=total_draws,
             available_draws=available_draws,
-            range_notice=range_notice,
-            main_theoretical_rate=main_rate,
-            main_expected_count=total_draws * main_rate,
-            special_theoretical_rate=special_rate,
-            special_expected_count=total_draws * special_rate,
-            main_sort=main_sort,
-            main_order=main_order,
-            special_sort=special_sort,
-            special_order=special_order,
+            latest_date=latest_date,
+            notice=range_notice,
         )
+
+    def _select_draws(self, game: GameSpec, selection: _StatsRange) -> list[Draw]:
+        """Read the selected draws in chronological order for missing-run counts."""
+        if not selection.total_draws:
+            return []
+        selected_draws = self._storage.query_draws(
+            game.code,
+            start_date=selection.start_date,
+            end_date=selection.end_date,
+            limit=selection.total_draws,
+            offset=0,
+        )
+        selected_draws.reverse()
+        return selected_draws
+
+
+def _parse_stats_dates(
+    game: GameSpec, latest_date: date | None, start: str, end: str
+) -> tuple[date | None, date | None]:
+    """Parse both dates before checking the supported bounds in priority order."""
+    start_date = _parse_date(start, "開始日期")
+    end_date = _parse_date(end, "結束日期")
+    if start_date and start_date < game.history_start:
+        raise QueryValidationError(f"開始日期不可早於 {game.history_start:%Y-%m-%d}。")
+    if end_date and end_date < game.history_start:
+        raise QueryValidationError(f"結束日期不可早於 {game.history_start:%Y-%m-%d}。")
+    if latest_date and start_date and start_date > latest_date:
+        raise QueryValidationError(f"開始日期不可晚於最新資料 {latest_date:%Y-%m-%d}。")
+    if latest_date and end_date and end_date > latest_date:
+        raise QueryValidationError(f"結束日期不可晚於最新資料 {latest_date:%Y-%m-%d}。")
+    if start_date and end_date and start_date > end_date:
+        raise QueryValidationError("開始日期不可晚於結束日期。")
+    return start_date, end_date
+
+
+def _build_frequency_page(
+    game: GameSpec,
+    selection: _StatsRange,
+    selected_draws: list[Draw],
+    *,
+    main_sort: str,
+    main_order: str,
+    special_sort: str,
+    special_order: str,
+) -> FrequencyPage:
+    """Calculate and sort both number tables without further storage access."""
+    main_rate = 6 / game.main_number_max
+    special_rate = 1 / game.special_number_max
+    main_frequencies = _number_statistics(
+        selected_draws,
+        max_number=game.main_number_max,
+        expected_count=selection.total_draws * main_rate,
+        special=False,
+    )
+    special_frequencies = _number_statistics(
+        selected_draws,
+        max_number=game.special_number_max,
+        expected_count=selection.total_draws * special_rate,
+        special=True,
+    )
+    return FrequencyPage(
+        game=game,
+        main_frequencies=_sort_frequencies(main_frequencies, main_sort, main_order),
+        special_frequencies=_sort_frequencies(
+            special_frequencies, special_sort, special_order
+        ),
+        total_draws=selection.total_draws,
+        start_date=selection.start_date,
+        end_date=selection.end_date,
+        latest_draw_date=selection.latest_date,
+        range_mode=selection.mode,
+        requested_draws=selection.requested_draws,
+        available_draws=selection.available_draws,
+        range_notice=selection.notice,
+        main_theoretical_rate=main_rate,
+        main_expected_count=selection.total_draws * main_rate,
+        special_theoretical_rate=special_rate,
+        special_expected_count=selection.total_draws * special_rate,
+        main_sort=main_sort,
+        main_order=main_order,
+        special_sort=special_sort,
+        special_order=special_order,
+    )
 
 
 def _parse_recent_draws(value: str) -> int:

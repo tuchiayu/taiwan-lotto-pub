@@ -197,7 +197,9 @@ if (results) {
       const icon = link?.querySelector(".sort-icon");
       if (icon) icon.textContent = selected ? (order === "asc" ? "▲" : "▼") : "↕";
     }
-    if (sortStatus) sortStatus.textContent = panel.dataset.sortLabel;
+    if (sortStatus && panel.dataset.tablePanel === activeTable) {
+      sortStatus.textContent = panel.dataset.sortLabel;
+    }
     updateSortLinks(panel);
   };
 
@@ -218,12 +220,21 @@ if (results) {
         url.searchParams.set(`${table}_sort`, field);
         url.searchParams.set(`${table}_order`, order);
         history.replaceState({ table }, "", url);
+        for (const currentPanel of panels) updateSortLinks(currentPanel);
       });
     }
   }
 
   window.addEventListener("popstate", () => {
-    const table = new URL(window.location.href).searchParams.get("table") || "main";
-    activateTable(table);
+    const parameters = new URL(window.location.href).searchParams;
+    // Restore the visible panel and its scroll position before sorting its rows.
+    activateTable(parameters.get("table") || "main");
+    for (const panel of panels) {
+      const table = panel.dataset.tablePanel;
+      const rawField = parameters.get(`${table}_sort`);
+      const field = rawField && rawField in sortLabels ? rawField : "count";
+      const order = parameters.get(`${table}_order`) === "asc" ? "asc" : "desc";
+      sortPanel(panel, field, order);
+    }
   });
 }

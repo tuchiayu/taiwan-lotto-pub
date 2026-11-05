@@ -4,10 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "taiwan-lotto"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Python project for collecting, storing, querying, and analyzing Taiwan Lotto 6/49 and Super Lotto draw results"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
+# Same pins as requirements.txt; tests/unit/test_packaging.py fails when the
+# two lists differ.
+dependencies = [
+    "fastapi==0.141.1",
+    "Jinja2==3.1.6",
+    "uvicorn==0.52.4",
+]
 
 [project.scripts]
 taiwan-lotto = "taiwan_lotto.main:cli"
@@ -20,6 +27,7 @@ where = ["src"]
 "taiwan_lotto.web" = ["templates/*.html", "static/*.css", "static/*.js"]
 
 [tool.pytest.ini_options]
+addopts = "--tracing=retain-on-failure --screenshot=only-on-failure"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]

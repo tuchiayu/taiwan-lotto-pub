@@ -1,1 +1,1 @@
-"""Taiwan Lotto Lab package."""
+"""Taiwan Lotto package."""

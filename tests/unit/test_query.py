@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import date
+from unittest.mock import Mock, call
 
 import pytest
 
-from taiwan_lotto.models import LOTTO_649, Draw
+from taiwan_lotto.models import LOTTO_649, SUPPORTED_GAMES, Draw
 from taiwan_lotto.query import (
     MAX_PAGE_NUMBER,
     MAX_RECENT_DRAWS,
@@ -241,3 +242,204 @@ def test_stats_service_represents_empty_database() -> None:
 
     assert result.total_draws == 0
     assert result.latest_draw_date == date(2026, 8, 25)
+
+
+@pytest.mark.parametrize("game", SUPPORTED_GAMES, ids=lambda game: game.code)
+@pytest.mark.parametrize("bounds", ["both", "start", "end", "empty"])
+def test_stats_date_boundaries_and_storage_calls(game, bounds) -> None:
+    storage = Mock(wraps=FakeStorage(count=3))
+    start = game.history_start if bounds in ("both", "start") else None
+    end = date(2026, 8, 25) if bounds in ("both", "end") else None
+
+    result = StatsQueryService(storage).search(
+        game_code=game.code,
+        range_mode="date",
+        start=start.isoformat() if start else "",
+        end=end.isoformat() if end else "",
+        draws="ignored",
+    )
+
+    assert (result.start_date, result.end_date) == (start, end)
+    assert result.range_mode == ("all" if bounds == "empty" else "date")
+    assert result.requested_draws == 100
+    assert result.available_draws == result.total_draws == 3
+    assert result.range_notice is None
+    expected_calls = [
+        call.latest_available_draw_date(game.code),
+        call.count_draws(game.code),
+    ]
+    if bounds != "empty":
+        expected_calls.append(
+            call.count_draws(game.code, start_date=start, end_date=end)
+        )
+    expected_calls.append(
+        call.query_draws(game.code, start_date=start, end_date=end, limit=3, offset=0)
+    )
+    assert storage.method_calls == expected_calls
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message", "reads_metadata"),
+    [
+        ({"game_code": "bad", "range_mode": "bad"}, "請選擇有效的彩券種類。", False),
+        ({"range_mode": "bad", "main_sort": "bad"}, "請選擇有效的統計範圍。", False),
+        (
+            {"range_mode": "date", "start": "bad", "special_order": "bad"},
+            "請選擇有效的排序方式。",
+            False,
+        ),
+        (
+            {"range_mode": "date", "start": "bad", "end": "bad"},
+            "開始日期必須是 YYYY-MM-DD 格式。",
+            True,
+        ),
+        (
+            {"range_mode": "date", "start": "2006-12-31", "end": "bad"},
+            "結束日期必須是 YYYY-MM-DD 格式。",
+            True,
+        ),
+        (
+            {"range_mode": "date", "start": "2006-12-31", "end": "2006-12-30"},
+            "開始日期不可早於 2007-01-01。",
+            True,
+        ),
+        (
+            {"range_mode": "date", "start": "2026-08-26", "end": "2006-12-31"},
+            "結束日期不可早於 2007-01-01。",
+            True,
+        ),
+        (
+            {"range_mode": "date", "start": "2026-08-27", "end": "2026-08-26"},
+            "開始日期不可晚於最新資料 2026-08-25。",
+            True,
+        ),
+        (
+            {"range_mode": "date", "end": "2026-08-26"},
+            "結束日期不可晚於最新資料 2026-08-25。",
+            True,
+        ),
+        (
+            {"range_mode": "date", "start": "2026-08-25", "end": "2026-08-24"},
+            "開始日期不可晚於結束日期。",
+            True,
+        ),
+        (
+            {"range_mode": "recent", "draws": "10000000"},
+            "最近期數不可超過 1,000,000。",
+            True,
+        ),
+    ],
+)
+def test_stats_validation_priority_and_exact_messages(
+    arguments, message, reads_metadata
+):
+    storage = Mock(wraps=FakeStorage())
+    with pytest.raises(QueryValidationError) as error:
+        StatsQueryService(storage).search(**arguments)
+    assert str(error.value) == message
+    assert storage.method_calls == (
+        [
+            call.latest_available_draw_date(LOTTO_649.code),
+            call.count_draws(LOTTO_649.code),
+        ]
+        if reads_metadata
+        else []
+    )
+
+
+@pytest.mark.parametrize("requested", [1, 3, 100, MAX_RECENT_DRAWS])
+def test_stats_recent_limit_and_query_count(requested) -> None:
+    storage = Mock(wraps=FakeStorage(count=3))
+    result = StatsQueryService(storage).search(
+        range_mode="recent", draws=str(requested)
+    )
+    assert result.requested_draws == requested
+    assert result.available_draws == 3
+    assert result.total_draws == min(requested, 3)
+    assert result.range_notice == (
+        f"要求最近 {requested} 期，目前只有 3 期，因此顯示全部 3 期。"
+        if requested > 3
+        else None
+    )
+    assert storage.method_calls == [
+        call.latest_available_draw_date(LOTTO_649.code),
+        call.count_draws(LOTTO_649.code),
+        call.query_draws(
+            LOTTO_649.code,
+            start_date=None,
+            end_date=None,
+            limit=min(requested, 3),
+            offset=0,
+        ),
+    ]
+
+
+@pytest.mark.parametrize("mode", ["all", "date", "recent"])
+def test_stats_zero_results_skip_draw_query(mode) -> None:
+    storage = Mock(wraps=FakeStorage(count=0))
+    storage.latest_available_draw_date.return_value = None
+    result = StatsQueryService(storage).search(
+        range_mode=mode, start="2026-01-01", end="2026-01-02"
+    )
+    assert result.latest_draw_date is None
+    assert result.total_draws == result.available_draws == 0
+    storage.query_draws.assert_not_called()
+    assert storage.count_draws.call_count == (2 if mode == "date" else 1)
+    assert result.range_notice == (
+        "要求最近 100 期，目前只有 0 期，因此顯示全部 0 期。"
+        if mode == "recent"
+        else None
+    )
+    for rows in (result.main_frequencies, result.special_frequencies):
+        assert all(
+            row.count == row.current_missing_draws == row.longest_missing_draws == 0
+            for row in rows
+        )
+        assert all(
+            row.rate == row.expected_difference == 0 and row.last_seen_date is None
+            for row in rows
+        )
+
+
+@pytest.mark.parametrize("game", SUPPORTED_GAMES, ids=lambda game: game.code)
+@pytest.mark.parametrize("order", ["asc", "desc"])
+def test_stats_game_rates_chronology_and_date_sort(game, order) -> None:
+    storage = FakeStorage(count=3)
+    storage.draws = [
+        Draw(
+            game.code, f"11500000{day}", date(2026, 1, day), (1, 2, 3, 4, 5, 6), special
+        )
+        for day, special in [(3, 7), (2, 8), (1, 7)]
+    ]
+    result = StatsQueryService(storage).search(
+        game_code=game.code,
+        main_sort="number",
+        main_order="desc",
+        special_sort="last_seen_date",
+        special_order=order,
+    )
+    assert [row.number for row in result.main_frequencies] == list(
+        range(game.main_number_max, 0, -1)
+    )
+    assert [row.number for row in result.special_frequencies] == (
+        ([8, 7] if order == "asc" else [7, 8])
+        + [
+            number
+            for number in range(1, game.special_number_max + 1)
+            if number not in (7, 8)
+        ]
+    )
+    assert result.main_theoretical_rate == 6 / game.main_number_max
+    assert result.special_theoretical_rate == 1 / game.special_number_max
+    assert result.main_expected_count == 3 * result.main_theoretical_rate
+    assert result.special_expected_count == 3 * result.special_theoretical_rate
+    seven = next(row for row in result.special_frequencies if row.number == 7)
+    assert seven == NumberFrequency(
+        7, 2, 2 / 3, 2 - result.special_expected_count, date(2026, 1, 3), 0, 1
+    )
+    eight = next(row for row in result.special_frequencies if row.number == 8)
+    assert (
+        eight.last_seen_date,
+        eight.current_missing_draws,
+        eight.longest_missing_draws,
+    ) == (date(2026, 1, 2), 1, 1)

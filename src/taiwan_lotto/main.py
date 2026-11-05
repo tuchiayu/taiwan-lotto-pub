@@ -1,4 +1,4 @@
-"""Command-line entry point for Taiwan Lotto Lab."""
+"""Command-line entry point for Taiwan Lotto."""
 
 from __future__ import annotations
 

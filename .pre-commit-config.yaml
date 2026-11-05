@@ -1,5 +1,6 @@
 # Pre-commit Hooks Configuration
 # Automatically triggers formatter/linter and secret security scanning on git commit.
+# See DEVELOPMENT.md 2.4.4 Pre-commit Hooks for detailed rules.
 #
 # Local setup:
 #   1. Install: winget install pre-commit (or another method for your OS)
@@ -27,7 +28,7 @@ repos:
   # This rev is the single source of truth for the detect-secrets version; CI runs
   # pre-commit run --all-files directly and picks it up automatically, no separate sync needed.
   # The following "manual" execution paths each pin their own version and must be checked together on update:
-  #   The pipx run detect-secrets command used for local/manual scans
+  #   DEVELOPMENT.md 2.4.3's pipx run detect-secrets command
   #   Any language handbook that pins detect-secrets in its own dev dependency file
   #   (for example Python's requirements-dev.txt); stacks without such a file use the
   #   shared pipx command above and need no separate pin

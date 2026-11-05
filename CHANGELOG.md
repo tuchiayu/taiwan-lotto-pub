@@ -2,6 +2,18 @@
 
 本專案的重要變更會記錄在此文件。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本號採用 [Semantic Versioning](https://semver.org/lang/zh-TW/)。
 
+## [0.1.1] - 2026-11-05
+
+### 修正
+
+- 以 `pip install .`、`pipx install` 或 `uv tool install` 直接安裝時，一併安裝執行所需套件（FastAPI、Jinja2、Uvicorn），不再出現 `No module named 'fastapi'`
+- 統計頁變更排序後按瀏覽器上一頁／下一頁，兩張表格的排序會依網址正確還原
+
+### 其他
+
+- README 補充 `taiwan-lotto web` 啟動前同步與同步失敗時的行為
+- 新增 Chromium 瀏覽器互動測試，CI 覆蓋率門檻提高至 80%
+
 ## [0.1.0] - 2026-08-31
 
 ### 新增

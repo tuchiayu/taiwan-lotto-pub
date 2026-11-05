@@ -59,18 +59,40 @@ taiwan-lotto web --no-sync
 
 同步指令不包含背景排程；需要更新資料時手動執行即可。資料庫檔不進入 Git，備份前先確認沒有同步程序執行，再複製 `data/taiwan_lotto.db`。
 
-`taiwan-lotto web` 會先同步最新開獎資料，再於 `http://127.0.0.1:4938`（可用 `--port` 指定其他 port）啟動唯讀的本機 Web 介面，並於服務就緒後自動開啟瀏覽器（`--no-browser` 可關閉）；`Ctrl+C` 停止服務。同步失敗但已有本機資料庫時，會顯示警告並使用既有資料啟動；首次同步失敗且沒有資料庫時則不啟動 Web。離線使用、開發或除錯時可加上 `--no-sync`，直接使用既有資料啟動；即使資料庫不存在，也會保留 Web 原有的缺少資料提示。首頁可依彩券與日期區間瀏覽逐期開獎資料；`/stats` 可使用全部資料、日期區間或最近期數，查看獎號／第一區與特別號／第二區的開出次數、開出率、與理論差異、最近開出日期及未開期數，並可點擊表格欄位排序。僅限本機存取，不提供遠端或多使用者部署。
+`taiwan-lotto web` 預設由 CLI 先同步最新開獎資料，再於 `http://127.0.0.1:4938`（可用 `--port` 指定其他 port）啟動唯讀的本機 Web 介面，並於服務就緒後自動開啟瀏覽器（`--no-browser` 可關閉）；`Ctrl+C` 停止服務。啟動前的同步可能建立或更新 `data/taiwan_lotto.db`，Web 查詢層僅讀取資料。
+
+同步失敗時，會檢查同步後的資料庫檔案是否存在：若已存在，仍會顯示警告並啟動 Web；若尚無開獎紀錄，頁面會顯示無資料提示。首次同步可能在下載失敗前就已建立空資料庫，因此不會僅因首次同步失敗而停止啟動。若同步失敗後資料庫檔案仍不存在，則不啟動 Web。
+
+離線使用、開發或除錯時可加上 `--no-sync`，略過啟動前同步並直接啟動 Web。此時即使資料庫不存在，也會啟動並顯示缺少資料的提示，不會建立資料庫。
+
+首頁可依彩券與日期區間瀏覽逐期開獎資料；`/stats` 可使用全部資料、日期區間或最近期數，查看獎號／第一區與特別號／第二區的開出次數、開出率、與理論差異、最近開出日期及未開期數，並可點擊表格欄位排序。僅限本機存取，不提供遠端或多使用者部署。
 
 ### 3. 測試
+
+執行完整測試前，需在虛擬環境安裝 Playwright 使用的 Chromium。Windows / macOS：
+
+```text
+python -m playwright install chromium
+```
+
+Linux 同時安裝瀏覽器所需的系統套件（可能需要管理員權限）：
+
+```bash
+python -m playwright install --with-deps chromium
+```
 
 ```text
 ruff format --check .
 ruff check .
-pytest --cov=src --cov-report=term-missing --cov-fail-under=50
+pytest --cov=src --cov-report=term-missing --cov-fail-under=80
 pip-audit -r requirements.txt
 pip-audit -r requirements-dev.txt
 pre-commit run --all-files
 ```
+
+完整 `pytest` 包含 `tests/e2e` 的無頭 Chromium 互動測試，使用臨時 SQLite 與本機隨機 port，不讀取正式資料庫或執行台彩同步。只跑單元／整合測試可用 `pytest tests/unit tests/integration`；只跑瀏覽器測試可用 `pytest tests/e2e`。
+
+瀏覽器測試失敗時，會在 `test-results/` 保留 trace 與截圖（已排除於 Git），可用 `python -m playwright show-trace "test-results/<測試目錄>/trace.zip"` 開啟 trace。CI 的失敗產物可從 `browser-test-failures` artifact 下載，保留 7 天。
 
 ## 目前範圍
 

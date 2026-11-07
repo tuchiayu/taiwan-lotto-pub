@@ -2,6 +2,22 @@
 
 本專案的重要變更會記錄在此文件。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本號採用 [Semantic Versioning](https://semver.org/lang/zh-TW/)。
 
+## [0.2.0] - 2026-11-07
+
+### 新增
+
+- 資料庫改存放在固定的資料夾，不再跟著執行指令時所在的資料夾：Windows 為 `%LOCALAPPDATA%\TaiwanLotto\data`，macOS／Linux 為 `~/.local/share/taiwan-lotto`；從原始碼執行時使用 repo 內的 `dev-data/`
+- `sync`、`web` 新增 `--data-dir` 選項與 `TLL_DATA_DIR` 環境變數，可自行指定資料夾；執行時會先印出使用的資料庫路徑
+- 舊版的 `data/taiwan_lotto.db` 不會自動搬移，新位置第一次同步約需 9 秒；確認無誤後可刪除舊檔
+
+### 修正
+
+- 網頁標題改為 `TAIWAN LOTTO`
+
+### 其他
+
+- 測試改為平行執行
+
 ## [0.1.1] - 2026-11-05
 
 ### 修正

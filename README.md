@@ -55,11 +55,20 @@ taiwan-lotto web
 taiwan-lotto web --no-sync
 ```
 
-`taiwan-lotto sync` 第一次執行時會建立 `data/taiwan_lotto.db`，並從台彩官網目前使用的月份 API 匯入大樂透（2007 年起）與威力彩（2008 年起）的官方歷史資料。後續執行會分別從各彩券最新資料月份往前兩個月查到目前月份，新增最新期別、補回近期缺期並比對官方修正。
+`taiwan-lotto sync` 第一次執行時會建立資料庫 `taiwan_lotto.db`，並從台彩官網目前使用的月份 API 匯入大樂透（2007 年起）與威力彩（2008 年起）的官方歷史資料。後續執行會分別從各彩券最新資料月份往前兩個月查到目前月份，新增最新期別、補回近期缺期並比對官方修正。
 
-同步指令不包含背景排程；需要更新資料時手動執行即可。資料庫檔不進入 Git，備份前先確認沒有同步程序執行，再複製 `data/taiwan_lotto.db`。
+資料庫的位置與執行時所在的資料夾無關，依序為：
 
-`taiwan-lotto web` 預設由 CLI 先同步最新開獎資料，再於 `http://127.0.0.1:4938`（可用 `--port` 指定其他 port）啟動唯讀的本機 Web 介面，並於服務就緒後自動開啟瀏覽器（`--no-browser` 可關閉）；`Ctrl+C` 停止服務。啟動前的同步可能建立或更新 `data/taiwan_lotto.db`，Web 查詢層僅讀取資料。
+1. `--data-dir <路徑>`（`sync`、`web` 都可使用）
+2. 環境變數 `TLL_DATA_DIR`
+3. 從本 repo 的原始碼執行時：專案內的 `dev-data/`（見 [dev-data/README.md](dev-data/README.md)）
+4. 安裝版（`pip install .`、`pipx`、`uv tool`）：Windows `%LOCALAPPDATA%\TaiwanLotto\data`；macOS／Linux `$XDG_DATA_HOME/taiwan-lotto` 或 `~/.local/share/taiwan-lotto`
+
+`sync` 與 `web` 執行時會先印出 `Database: <路徑>`。先前的版本把資料庫放在執行時所在資料夾的 `data/taiwan_lotto.db`；升級後會在新位置重新完整同步（約 9 秒），舊檔不再使用，可以刪除。
+
+同步指令不包含背景排程；需要更新資料時手動執行即可。資料庫檔不進入 Git，備份前先確認沒有同步程序執行，再複製上述位置的 `taiwan_lotto.db`。
+
+`taiwan-lotto web` 預設由 CLI 先同步最新開獎資料，再於 `http://127.0.0.1:4938`（可用 `--port` 指定其他 port）啟動唯讀的本機 Web 介面，並於服務就緒後自動開啟瀏覽器（`--no-browser` 可關閉）；`Ctrl+C` 停止服務。啟動前的同步可能建立或更新資料庫，Web 查詢層僅讀取資料。
 
 同步失敗時，會檢查同步後的資料庫檔案是否存在：若已存在，仍會顯示警告並啟動 Web；若尚無開獎紀錄，頁面會顯示無資料提示。首次同步可能在下載失敗前就已建立空資料庫，因此不會僅因首次同步失敗而停止啟動。若同步失敗後資料庫檔案仍不存在，則不啟動 Web。
 
@@ -84,13 +93,13 @@ python -m playwright install --with-deps chromium
 ```text
 ruff format --check .
 ruff check .
-pytest --cov=src --cov-report=term-missing --cov-fail-under=80
+pytest -n auto --dist=load --cov=src --cov-report=term-missing --cov-fail-under=80
 pip-audit -r requirements.txt
 pip-audit -r requirements-dev.txt
 pre-commit run --all-files
 ```
 
-完整 `pytest` 包含 `tests/e2e` 的無頭 Chromium 互動測試，使用臨時 SQLite 與本機隨機 port，不讀取正式資料庫或執行台彩同步。只跑單元／整合測試可用 `pytest tests/unit tests/integration`；只跑瀏覽器測試可用 `pytest tests/e2e`。
+完整 `pytest` 包含 `tests/e2e` 的無頭 Chromium 互動測試，使用臨時 SQLite 與本機隨機 port，不讀取正式資料庫或執行台彩同步。只跑單元／整合測試可用 `pytest tests/unit tests/integration`；只跑瀏覽器測試可用 `pytest tests/e2e`。`-n auto --dist=load` 以 pytest-xdist 平行執行；排查單一失敗時，直接執行 `pytest <測試檔>` 逐一執行比較容易看錯誤。
 
 瀏覽器測試失敗時，會在 `test-results/` 保留 trace 與截圖（已排除於 Git），可用 `python -m playwright show-trace "test-results/<測試目錄>/trace.zip"` 開啟 trace。CI 的失敗產物可從 `browser-test-failures` artifact 下載，保留 7 天。
 

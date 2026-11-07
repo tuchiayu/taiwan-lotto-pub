@@ -8,12 +8,16 @@ import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from taiwan_lotto.paths import ENV_VAR, database_path, dev_data_dir
 from taiwan_lotto.sources.taiwan_lottery import TaiwanLotterySource
 from taiwan_lotto.storage.sqlite import SQLiteStorage, StorageError
 from taiwan_lotto.sync import SyncService
 from taiwan_lotto.web.server import DEFAULT_PORT, WebServerError, run_web
 
-DEFAULT_DATABASE_PATH = Path("data/taiwan_lotto.db")
+DATA_DIR_HELP = (
+    f"Folder for taiwan_lotto.db (default: ${ENV_VAR}, the source checkout's "
+    "dev-data/, or a per-user data folder)."
+)
 
 
 def get_version() -> str:
@@ -41,14 +45,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser(
+    sync_parser = subparsers.add_parser(
         "sync",
         help="Synchronize Lotto 6/49 and Super Lotto draw results.",
     )
+    sync_parser.add_argument("--data-dir", type=Path, default=None, help=DATA_DIR_HELP)
     web_parser = subparsers.add_parser(
         "web",
         help="Browse stored draw results in a local Web interface.",
     )
+    web_parser.add_argument("--data-dir", type=Path, default=None, help=DATA_DIR_HELP)
     web_parser.add_argument(
         "--port",
         type=_port_number,
@@ -72,20 +78,24 @@ def main(argv: list[str] | None = None) -> int:
     """Run the command-line application."""
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command not in ("sync", "web"):
+        parser.print_help()
+        return 0
+    # Design 008: never relative to the working directory; say which file.
+    path = database_path(args.data_dir)
+    label = " (development data)" if path.parent == dev_data_dir() else ""
+    print(f"Database: {path}{label}")
     if args.command == "sync":
-        return run_sync()
-    if args.command == "web":
-        return run_web_command(
-            DEFAULT_DATABASE_PATH,
-            port=args.port,
-            open_browser=not args.no_browser,
-            sync_before_start=not args.no_sync,
-        )
-    parser.print_help()
-    return 0
+        return run_sync(path)
+    return run_web_command(
+        path,
+        port=args.port,
+        open_browser=not args.no_browser,
+        sync_before_start=not args.no_sync,
+    )
 
 
-def run_sync(database_path: Path = DEFAULT_DATABASE_PATH) -> int:
+def run_sync(database_path: Path) -> int:
     """Synchronize supported games and print a concise result summary."""
     try:
         results = SyncService(
@@ -111,7 +121,7 @@ def run_sync(database_path: Path = DEFAULT_DATABASE_PATH) -> int:
 
 
 def run_web_command(
-    database_path: Path = DEFAULT_DATABASE_PATH,
+    database_path: Path,
     *,
     port: int = DEFAULT_PORT,
     open_browser: bool = True,

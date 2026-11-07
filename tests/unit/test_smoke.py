@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import os
 from datetime import date
+from pathlib import Path
 
 import pytest
 
 import taiwan_lotto.main as main_module
 from taiwan_lotto.main import cli, get_version, main, run_sync, run_web_command
 from taiwan_lotto.models import LOTTO_649, SUPER_LOTTO_638, GameSyncResult, SyncCounts
+from taiwan_lotto.paths import ENV_VAR
 from taiwan_lotto.storage.sqlite import StorageError
+
+# The fake sync services below never open it.
+UNUSED_DB = Path("unused") / "taiwan_lotto.db"
 
 
 def test_version_prefers_app_version(monkeypatch) -> None:
@@ -35,10 +41,49 @@ def test_help_flag_prints_usage(capsys) -> None:
     assert "web" in output
 
 
-def test_sync_command_dispatches_to_sync_runner(monkeypatch) -> None:
-    monkeypatch.setattr(main_module, "run_sync", lambda: 7)
+def test_sync_command_dispatches_to_sync_runner(monkeypatch, capsys) -> None:
+    received = []
+    monkeypatch.setattr(
+        main_module, "run_sync", lambda path: received.append(path) or 7
+    )
 
     assert main(["sync"]) == 7
+    # Design 008: the resolved file, printed before the sync starts.
+    expected = Path(os.environ[ENV_VAR]).resolve() / "taiwan_lotto.db"
+    assert received == [expected]
+    assert f"Database: {expected}\n" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", [["sync"], ["web", "--no-sync"]])
+def test_data_dir_option_selects_the_database(
+    monkeypatch, tmp_path, capsys, command
+) -> None:
+    received = []
+    monkeypatch.setattr(
+        main_module, "run_sync", lambda path: received.append(path) or 0
+    )
+    monkeypatch.setattr(
+        main_module, "run_web", lambda path, **_kwargs: received.append(path) or 0
+    )
+
+    assert main([*command, "--data-dir", str(tmp_path / "chosen")]) == 0
+    expected = (tmp_path / "chosen").resolve() / "taiwan_lotto.db"
+    assert received == [expected]
+    assert f"Database: {expected}" in capsys.readouterr().out
+
+
+def test_dev_data_is_labelled(monkeypatch, tmp_path, capsys) -> None:
+    import taiwan_lotto.paths as paths
+
+    (tmp_path / "dev-data").mkdir()
+    (tmp_path / "dev-data" / "README.md").write_text("marker\n")
+    monkeypatch.setattr(paths, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.delenv(ENV_VAR)
+    monkeypatch.setattr(main_module, "run_sync", lambda _path: 0)
+
+    assert main(["sync"]) == 0
+    expected = tmp_path / "dev-data" / "taiwan_lotto.db"
+    assert f"Database: {expected} (development data)" in capsys.readouterr().out
 
 
 def test_web_command_uses_representative_default_port(monkeypatch) -> None:
@@ -64,7 +109,7 @@ def test_web_command_uses_representative_default_port(monkeypatch) -> None:
     assert main(["web"]) == 0
     assert events == ["sync", "web"]
     assert received == {
-        "database_path": main_module.DEFAULT_DATABASE_PATH,
+        "database_path": Path(os.environ[ENV_VAR]).resolve() / "taiwan_lotto.db",
         "port": 4938,
         "open_browser": True,
     }
@@ -202,7 +247,7 @@ def test_run_sync_prints_results_and_returns_failure(monkeypatch, capsys) -> Non
 
     monkeypatch.setattr(main_module, "SyncService", FakeSyncService)
 
-    assert run_sync() == 1
+    assert run_sync(UNUSED_DB) == 1
     captured = capsys.readouterr()
     assert "大樂透: status=ok mode=incremental" in captured.out
     assert "added=1 skipped=2 corrected=3 missing=4" in captured.out
@@ -229,7 +274,7 @@ def test_run_sync_returns_success_when_every_game_succeeds(monkeypatch) -> None:
 
     monkeypatch.setattr(main_module, "SyncService", FakeSyncService)
 
-    assert run_sync() == 0
+    assert run_sync(UNUSED_DB) == 0
 
 
 def test_run_sync_reports_storage_initialization_error(monkeypatch, capsys) -> None:
@@ -242,7 +287,7 @@ def test_run_sync_reports_storage_initialization_error(monkeypatch, capsys) -> N
 
     monkeypatch.setattr(main_module, "SyncService", FailingSyncService)
 
-    assert run_sync() == 1
+    assert run_sync(UNUSED_DB) == 1
     assert "Synchronization failed: database is locked" in capsys.readouterr().err
 
 
